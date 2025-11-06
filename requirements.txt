@@ -1,0 +1,8 @@
+flask
+pandas
+pymongo
+xgboost
+scikit-learn
+numpy
+requests
+pyserial  # <-- pyserial is back, because we are running locally!

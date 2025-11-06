@@ -1,0 +1,82 @@
+/* --- IMPROVEMENT: Import Font --- */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+body {
+    font-family: 'Poppins', sans-serif;
+    text-align: center;
+    background: #f7f9fa;
+    margin: 0;
+    padding: 10px;
+    /* --- IMPROVEMENT: Smooth color change --- */
+    transition: background-color 0.5s ease;
+}
+
+h1 {
+    margin-top: 15px;
+    color: #333;
+}
+
+.status-box {
+    background: #fff;
+    padding: 10px 20px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    margin: 15px auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid #eee;
+}
+
+/* --- IMPROVEMENT: Better spacing in status --- */
+.status-box h2 {
+    margin: 5px 0;
+    color: #000;
+}
+.status-box p {
+    margin: 5px 0;
+    color: #555;
+    font-size: 1.1em;
+}
+
+.grid {
+    display: grid;
+    /* --- IMPROVEMENT: Added more charts, fit content --- */
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    width: 95%;
+    max-width: 1400px;
+    margin: 20px auto;
+}
+
+/* * This container is new in the HTML. 
+ * It helps Chart.js be responsive.
+*/
+.chart-container {
+    position: relative;
+    height: 350px; /* Give charts a fixed height */
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 15px;
+    box-sizing: border-box; /* Include padding in width/height */
+}
+
+/* --- IMPROVEMENT: Responsive layout for mobile --- */
+@media (max-width: 768px) {
+    body {
+        padding: 5px;
+    }
+    .grid {
+        /* Stacks to 1 column */
+        grid-template-columns: 1fr;
+        width: 100%;
+        gap: 15px;
+    }
+    h1 {
+        font-size: 1.5em;
+    }
+    .status-box {
+        width: 95%;
+    }
+}

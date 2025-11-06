@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🌍 Disaster Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>IoT + ML Disaster Prediction</h1>
+  
+  <div id="status" class="status-box">
+    <h2 id="risk">Risk: Loading...</h2>
+    <p id="impact">Impact time: --</p>
+  </div>
+
+  <div class="grid">
+    <div class="chart-container"><canvas id="tempChart"></canvas></div>
+    <div class="chart-container"><canvas id="humChart"></canvas></div>
+    <div class="chart-container"><canvas id="rainChart"></canvas></div>
+    <div class="chart-container"><canvas id="soilChart"></canvas></div>
+    <div class="chart-container"><canvas id="vibChart"></canvas></div>
+    <div class="chart-container"><canvas id="flameChart"></canvas></div>
+  </div>
+
+  <script>
+  const charts = {};
+  // Added Vib and Flame charts
+  const sensors = {
+    tempChart: { label: "Temperature °C", key: "T" },
+    humChart: { label: "Humidity %", key: "H" },
+    rainChart: { label: "Rain", key: "Rain" },
+    soilChart: { label: "Soil", key: "Soil" },
+    vibChart: { label: "Vibration", key: "Vib" },
+    flameChart: { label: "Flame", key: "Flame" }
+  };
+  const statusEl = document.getElementById("status");
+  const riskEl = document.getElementById("risk");
+  const impactEl = document.getElementById("impact");
+
+  for (const [id, info] of Object.entries(sensors)) {
+    charts[id] = new Chart(document.getElementById(id), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: info.label,
+          data: [],
+          fill: false,
+          borderColor: '#007bff',
+          tension: 0.1
+        }]
+      },
+      options: {
+        responsive: true,          // <-- IMPROVEMENT
+        maintainAspectRatio: false, // <-- IMPROVEMENT
+        scales: { x: { display: false } },
+        plugins: { legend: { display: true } }
+      }
+    });
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch('/data');
+      if (!res.ok) {
+        console.error("Failed to fetch data");
+        return;
+      }
+      const data = await res.json();
+      if (!data.length) return;
+
+      const latest = data[data.length - 1];
+      
+      // Update Status Box
+      riskEl.textContent = "Risk: " + latest.Risk;
+      impactEl.textContent = "Impact in " + latest.ImpactTime + "h";
+
+      // Update background color and risk emoji
+      let riskColor = "#ccffcc"; // Default green (None)
+      let riskEmoji = "✅";
+      if (latest.Risk.toLowerCase() === "none") {
+        impactEl.textContent = "Impact time: --"; // Hide impact if no risk
+      } else if (latest.Risk.toLowerCase().includes("fire")) {
+        riskColor = "#ffcccc"; // Red
+        riskEmoji = "🔥";
+      } else if (latest.Risk.toLowerCase().includes("flood")) {
+        riskColor = "#cce6ff"; // Blue
+        riskEmoji = "💧";
+      } else if (latest.Risk.toLowerCase().includes("earthquake")) {
+        riskColor = "#ffd699"; // Orange
+        riskEmoji = "🌋";
+      }
+      riskEl.textContent = `${riskEmoji} Risk: ${latest.Risk}`;
+      document.body.style.background = riskColor;
+
+      // Update all charts
+      const labels = data.map(d => d.timestamp);
+      for (const [id, info] of Object.entries(sensors)) {
+        charts[id].data.labels = labels;
+        charts[id].data.datasets[0].data = data.map(d => d[info.key]);
+        charts[id].update('none'); // 'none' for no animation
+      }
+    } catch (error) {
+      console.error("Error in refresh:", error);
+    }
+  }
+  
+  // --- IMPROVEMENT ---
+  // Call once on load, then set interval
+  refresh();
+  setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

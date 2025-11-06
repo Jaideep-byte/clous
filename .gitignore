@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Local backup data
+server/sensor_data.csv
+
+# ML models and state
+# These live locally, no need to track them in Git
+ml/ml_models/
+ml/last_training_count.txt
