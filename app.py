@@ -7,28 +7,36 @@ from notifier import send_alert
 import numpy as np
 
 # --- System Constants for Render ---
-# Render's persistent disk is mounted at /app/ml
-ML_DIR = "/app/ml" 
-LAST_TRAIN_COUNT_FILE = os.path.join(ML_DIR, "last_training_count.txt")
+# FIX 1: Paths updated for Free Tier (models are in the repo, not a disk)
+ML_DIR = "ml" 
 MODEL_DIR = os.path.join(ML_DIR, "ml_models")
-RETRAIN_TRIGGER_COUNT = 500  # Retrain after 500 new rows
+
+# --- All auto-retraining code is disabled for the read-only free tier ---
+# LAST_TRAIN_COUNT_FILE = os.path.join(ML_DIR, "last_training_count.txt")
+# RETRAIN_TRIGGER_COUNT = 500
 
 # --- Locks ---
-model_lock = threading.Lock()       # Prevents reading models while they are being reloaded
-retraining_lock = threading.Lock()  # Prevents starting a new training if one is already running
+model_lock = threading.Lock()
+# retraining_lock = threading.Lock() # Disabled
 
 # --- Secrets from Render Environment Variables ---
-MONGODB_URI = os.environ.get("mongodb+srv://kannamreddyjaideepreddy_db_user:<db_password>@disasterdb.0wn492l.mongodb.net/?appName=DisasterDB")
-API_SECRET_KEY = os.environ.get("API_SECRET_KEY") # This is a password you will create
+# FIX 2: This is the MOST IMPORTANT FIX.
+# You must use the KEY (the name) from your Render dashboard.
+# The value (the long password string) STAYS on Render's dashboard ONLY.
+MONGODB_URI = os.environ.get("MONGODB_ATLAS_URI") 
+API_SECRET_KEY = os.environ.get("API_SECRET_KEY")
 
 if not MONGODB_URI or not API_SECRET_KEY:
     print("FATAL ERROR: MONGODB_ATLAS_URI or API_SECRET_KEY not set in environment.")
-    # In a real server, you might exit or raise an error
-    # For now, we'll just print the warning.
-    # exit(1) # Uncomment this line for production
-
+    # This error means you forgot to set the variables in the Render "Environment" tab
+    # OR you have a typo (like MONGODB_ATLAS_URI vs MONGODB_ATLAS_URI)
+    
 # --- MongoDB Atlas ---
 try:
+    # FIX 3: Check if MONGODB_URI is None before trying to connect
+    if MONGODB_URI is None:
+        raise ValueError("MONGODB_ATLAS_URI environment variable not found.")
+        
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
     client.server_info() # Test connection
     db = client["DisasterDB"]
@@ -36,8 +44,7 @@ try:
     print("Connected to MongoDB Atlas.")
 except Exception as e:
     print(f"Error connecting to MongoDB: {e}")
-    # In production, this should be a fatal error
-    # exit(1)
+    # This will now print the "FATAL ERROR" message from above if the key is missing
 
 # --- Flask setup ---
 app = Flask(__name__)
@@ -49,11 +56,11 @@ scaler = None
 le = None
 
 def load_models():
-    """Loads all 4 models from the persistent disk. Thread-safe."""
+    """Loads all 4 models from the Git repo. Thread-safe."""
     global model, time_model, scaler, le, model_lock
     
-    # Ensure the model directory exists on the persistent disk
-    os.makedirs(MODEL_DIR, exist_ok=True) 
+    # FIX 4: COMMENTED OUT. This line causes a PermissionError on Render's free tier.
+    # os.makedirs(MODEL_DIR, exist_ok=True) 
     
     try:
         with model_lock:
@@ -67,7 +74,7 @@ def load_models():
             for p in [model_path, time_path, scaler_path, le_path]:
                 if not os.path.exists(p):
                     print(f"Warning: Model file not found: {p}")
-                    print("This is normal on first boot. Run train_model.py from Render Shell.")
+                    print("This means your model is not in your 'ml/ml_models' folder in Git.")
                     return # Exit if models aren't trained yet
             
             model = pickle.load(open(model_path, "rb"))
@@ -78,68 +85,22 @@ def load_models():
     except Exception as e:
         print(f"An error occurred loading models: {e}")
 
+# --- All auto-retraining functions are disabled for the free tier ---
 def get_last_train_count():
-    """Reads the last training row count from its file."""
-    try:
-        with open(LAST_TRAIN_COUNT_FILE, 'r') as f:
-            return int(f.read())
-    except (FileNotFoundError, ValueError):
-        return 0
+    return 0
 
 def set_last_train_count(count):
-    """Saves the new training row count to its file."""
-    try:
-        with open(LAST_TRAIN_COUNT_FILE, 'w') as f:
-            f.write(str(int(count)))
-    except Exception as e:
-        print(f"Error writing to {LAST_TRAIN_COUNT_FILE}: {e}")
-
+    # This function is now disabled to prevent PermissionError
+    pass 
 
 def _run_training_process(current_row_count):
-    """
-    Internal function to run the training script and reload models.
-    This runs in a separate thread.
-    """
-    global retraining_lock
-    
-    if retraining_lock.locked():
-        print("[Auto-Retrain] A training process is already running. Skipping.")
-        return
-
-    with retraining_lock:
-        try:
-            print(f"[Auto-Retrain] Triggered at {current_row_count} rows. Starting training...")
-            
-            # Run the training script in a separate process
-            # We must tell it where the persistent disk is
-            process = subprocess.run(
-                ['python', 'ml/train_model.py', f'--model-dir={ML_DIR}'], 
-                capture_output=True, text=True, check=True
-            )
-            print("[Auto-Retrain] Subprocess output:", process.stdout)
-            
-            print("[Auto-Retrain] Training complete. Hot-reloading models...")
-            load_models() # This function is thread-safe
-            
-            set_last_train_count(current_row_count)
-            print(f"[Auto-Retrain] Success. New baseline count: {current_row_count}")
-            
-        except subprocess.CalledProcessError as e:
-            print(f"[Auto-Retrain] ERROR: Training script failed.")
-            print("STDOUT:", e.stdout)
-            print("STDERR:", e.stderr)
-        except Exception as e:
-            print(f"[Auto-Retrain] An unexpected error occurred: {e}")
+    # This function is now disabled
+    print("[Auto-Retrain] Auto-retraining is disabled on the free tier.")
+    pass
 
 def trigger_retraining(current_row_count):
-    """Starts the retraining process in a new non-blocking thread."""
-    print("[Auto-Retrain] Queuing retraining job...")
-    train_thread = threading.Thread(
-        target=_run_training_process, 
-        args=(current_row_count,), 
-        daemon=True
-    )
-    train_thread.start()
+    # This function is now disabled
+    pass
 
 # --- Flask Routes ---
 
@@ -234,15 +195,14 @@ def submit_data():
 
     print(f"{ts.strftime('%Y-%m-%d %H:%M:%S')} | API Data Received | Risk={risk_label} | Impact={impact_time}h")
 
+    # FIX 5: Auto-retraining is disabled for the read-only free tier.
     # 6. Check for Auto-Retraining
-    # This is a simple way to count, for high performance use Mongo's .count_documents()
-    current_row_count = collection.count_documents({})
-    last_train_count = get_last_train_count()
+    # current_row_count = collection.count_documents({})
+    # last_train_count = get_last_train_count()
     
-    if (current_row_count - last_train_count) > RETRAIN_TRIGGER_COUNT:
-        trigger_retraining(current_row_count)
-        # Update in-memory count immediately to prevent re-triggering
-        set_last_train_count(current_row_count)
+    # if (current_row_count - last_train_count) > RETRAIN_TRIGGER_COUNT:
+    #     trigger_retraining(current_row_count)
+    #     set_last_train_count(current_row_count)
 
     return jsonify({"status": "OK", "predicted_risk": risk_label}), 200
 
