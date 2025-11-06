@@ -157,7 +157,23 @@ def submit_data():
         return jsonify({"error": "Bad data format"}), 400
 
     # 3. Make Prediction
-    X_features = np.array([t, h, soil, rain, flame, vib, p, alt]).reshape(1, -1)
+    
+    # --- THIS IS THE FIX ---
+    # The scaler was trained on a DataFrame with feature names.
+    # We must create one here so it knows which column is which.
+    
+    # First, create a dictionary of the data
+    data_dict = {
+        "T": t, "H": h, "Soil": soil, "Rain": rain,
+        "Flame": flame, "Vib": vib, "P": p, "Alt": alt
+    }
+    
+    # Next, create the DataFrame. The column order MUST match your training script.
+    # This list comes from your 'predict.py' file.
+    FEATURES = ["T", "H", "Soil", "Rain", "Flame", "Vib", "P", "Alt"]
+    X_features_df = pd.DataFrame([data_dict], columns=FEATURES)
+    # --- END OF FIX ---
+
     risk_label = "None"
     impact_time = 0.0
 
@@ -166,9 +182,12 @@ def submit_data():
         print("Models not loaded yet. Skipping prediction.")
     else:
         with model_lock: # Thread-safe prediction
-            X_scaled = scaler.transform(X_features)
+            # Now we scale the DataFrame, not the raw array
+            X_scaled = scaler.transform(X_features_df) 
+            
             risk_encoded = model.predict(X_scaled)[0]
             risk_label = le.inverse_transform([risk_encoded])[0]
+            # And convert from np.float32 to a normal float for MongoDB
             impact_time = float(round(time_model.predict(X_scaled)[0], 2))
 
     if risk_label.lower() == "none" or impact_time < 0:
