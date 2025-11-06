@@ -169,7 +169,7 @@ def submit_data():
             X_scaled = scaler.transform(X_features)
             risk_encoded = model.predict(X_scaled)[0]
             risk_label = le.inverse_transform([risk_encoded])[0]
-            impact_time = round(time_model.predict(X_scaled)[0], 2)
+            impact_time = float(round(time_model.predict(X_scaled)[0], 2))
 
     if risk_label.lower() == "none" or impact_time < 0:
         impact_time = 0.0
