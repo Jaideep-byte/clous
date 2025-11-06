@@ -18,7 +18,7 @@ model_lock = threading.Lock()       # Prevents reading models while they are bei
 retraining_lock = threading.Lock()  # Prevents starting a new training if one is already running
 
 # --- Secrets from Render Environment Variables ---
-MONGODB_URI = os.environ.get("MONGODB_ATLAS_URI")
+MONGODB_URI = os.environ.get("mongodb+srv://kannamreddyjaideepreddy_db_user:<db_password>@disasterdb.0wn492l.mongodb.net/?appName=DisasterDB")
 API_SECRET_KEY = os.environ.get("API_SECRET_KEY") # This is a password you will create
 
 if not MONGODB_URI or not API_SECRET_KEY:
