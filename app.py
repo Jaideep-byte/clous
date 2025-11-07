@@ -194,12 +194,15 @@ def update_impact_time():
 
 
 # ---
-# THIS IS THE NEW, CORRECTED /submit_data ENDPOINT
-# It merges your local client's POST request with your working prediction logic
+# THIS IS THE /submit_data ENDPOINT YOUR LOCAL CLIENT TALKS TO.
+# IT DOES NOT READ FROM A SERIAL PORT. IT WAITS FOR A POST REQUEST.
 # ---
 @app.route('/submit_data', methods=['POST'])
 def submit_data():
     global previous_risk_state
+    
+    # This is our canary test.
+    print("--- SERVER IS RUNNING THE FINAL, CORRECTED v3.0 CODE ---")
     
     # 1. Authenticate the request
     auth_key = request.headers.get('X-API-KEY')
@@ -222,12 +225,11 @@ def submit_data():
         return jsonify({"error": "Bad data format"}), 400
 
     # 3. Make Prediction
-    # <-- THIS LOGIC IS FROM YOUR WORKING 'read_serial' FUNCTION
+    # This logic fixes the bad "Fire" prediction.
     
-    # Build Feature Array in the correct order
+    # Build Feature DataFrame in the correct order
     try:
-        X_features_list = [sensors[feature] for feature in FEATURES]
-        X_features = np.array(X_features_list).reshape(1, -1)
+        X_features_df = pd.DataFrame([sensors], columns=FEATURES)
     except KeyError as e:
         print(f"Error: Missing feature {e} from sensor data")
         return jsonify({"error": f"Missing feature {e}"}), 400
@@ -240,19 +242,18 @@ def submit_data():
         print("Models not loaded, prediction skipped.")
     else:
         with model_lock:
-            # This is the line that fixes the 'UserWarning'
-            # We are now scaling the data in the correct feature order
-            X_scaled = scaler.transform(X_features)
+            # Scale the DataFrame (fixes the UserWarning)
+            X_scaled = scaler.transform(X_features_df)
             
             probabilities = model.predict_proba(X_scaled)[0]
             max_prob_index = np.argmax(probabilities)
             
-            # This fixes the 'bson.errors.InvalidDocument' (numpy.float32)
+            # Cast to float (fixes the BSON error)
             confidence = float(probabilities[max_prob_index]) 
             risk_label = le.inverse_transform([max_prob_index])[0]
 
             if risk_label.lower() != "none":
-                # This also fixes the 'bson' error
+                # Cast to float (fixes the BSON error)
                 predicted_impact_time = float(round(time_model.predict(X_scaled)[0], 2))
                 if predicted_impact_time < 0:
                     predicted_impact_time = 0.0
