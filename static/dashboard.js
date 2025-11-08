@@ -6,16 +6,11 @@
 // We must wait for the HTML to be fully loaded before trying to find elements
 document.addEventListener('DOMContentLoaded', () => {
 
-  // --- 1. NEW: Google Weather API Configuration ---
-  // 
-  // ⚠️ IMPORTANT: 
-  // You MUST replace this key with your own Google Cloud API key.
-  // 
-  const GOOGLE_API_KEY = "PASTE_YOUR_GOOGLE_API_KEY_HERE"; 
-  const VELLORE_LAT = 12.9165;
-  const VELLORE_LON = 79.1325;
-
-
+  // --- 1. Google Weather API Configuration ---
+  //
+  // --- API KEY REMOVED ---
+  // The client no longer needs the API key.
+  //
   // --- (Chart setup, live data, historical data, and pending events...
   //     These functions remain UNCHANGED) ---
   const liveCharts = {};
@@ -156,45 +151,30 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.error("Error saving impact time:", e); alert("Error saving data."); }
   }
 
-  // --- 4. NEW: Refresh Google Weather Forecast ---
+  // --- 4. UPDATED: Refresh Google Weather Forecast (Securely) ---
   async function fetchGoogleForecast() {
     const forecastBox = document.getElementById("forecast-box");
-    // Don't run if the API key hasn't been set
-    if (GOOGLE_API_KEY === "PASTE_YOUR_GOOGLE_API_KEY_HERE") {
-        forecastBox.innerHTML = `
-            <h3>Forecast Unavailable</h3>
-            <p style="color: #dc3545;">
-                Please set your Google API key in <strong>dashboard.js</strong>.
-            </p>`;
-        return;
-    }
     
-    const apiUrl = `https://weather.googleapis.com/v1/forecast:lookup?key=${GOOGLE_API_KEY}`;
-    const requestBody = {
-        "location": { "latitude": VELLORE_LAT, "longitude": VELLORE_LON },
-        "params": ["hourlyForecast"],
-        "language": "en"
-    };
+    // This function now calls YOUR server, not Google's.
+    // Your server will use the API key securely.
+    const apiUrl = '/weather_forecast';
 
     try {
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        });
+        const response = await fetch(apiUrl); // Simple GET request, no key needed
 
         if (!response.ok) {
+            // Get the error message from your server's JSON response
             const errorData = await response.json();
-            throw new Error(`API Error: ${response.status} - ${errorData.error.message}`);
+            throw new Error(`Server error: ${errorData.error}`);
         }
 
         const data = await response.json();
         
         if (!data.hourlyForecasts) {
-            throw new Error("No hourly data received");
+            throw new Error("No hourly data received from server");
         }
 
-        // Build the forecast list HTML
+        // Build the forecast list HTML (this logic is unchanged)
         let html = '<h3>Hourly Forecast</h3><ul class="forecast-list">';
         
         // Show next 5 hours
@@ -220,11 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
         forecastBox.innerHTML = html;
 
     } catch (error) {
-        console.error("Google Weather API failed:", error);
+        console.error("Weather forecast failed:", error);
         forecastBox.innerHTML = `
             <h3>Forecast Unavailable</h3>
             <p style="color: #dc3545; font-size: 0.9rem;">
-                Failed to load. Check API key.<br>
+                Failed to load. <br>
                 <small>${error.message}</small>
             </p>`;
     }
@@ -242,13 +222,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- 5. Initial Load and Refresh Timers (UPDATED) ---
   refreshLiveData();
-  fetchGoogleForecast(); // <-- CHANGED from refreshWeatherAlert
+  fetchGoogleForecast(); // This function is now secure
   loadHistoricalData('24h', document.querySelector('.hist-btn'));
   loadPendingEvents();
   
   setInterval(refreshLiveData, 5000); // Live charts every 5 sec
   // Forecasts don't change every minute. 10 minutes is safer for your API quota.
-  setInterval(fetchGoogleForecast, 600000); // <-- CHANGED (10 minutes)
+  setInterval(fetchGoogleForecast, 600000); // (10 minutes)
   setInterval(loadPendingEvents, 60000); // Pending events every 60 sec
 
 }); // End of DOMContentLoaded

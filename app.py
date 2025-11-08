@@ -14,23 +14,20 @@ MODEL_DIR = os.path.join(ML_DIR, "ml_models")
 # This is the feature order your model was trained on.
 FEATURES = ["T", "H", "Soil", "Rain", "Flame", "Vib", "P", "Alt"]
 
-# --- Weather API Config (Open-Meteo - No Key Needed!) ---
-VELLORE_LAT = "12.9165"
-VELLORE_LON = "79.1325"
-WEATHER_API_URL = (
-    f"https://api.open-meteo.com/v1/forecast?latitude={VELLORE_LAT}&longitude={VELLORE_LON}"
-    "&hourly=precipitation_probability&weather_alerts=auto&timezone=auto&name=Vellore"
-)
-
 # --- Locks ---
 model_lock = threading.Lock()
 
 # --- Secrets from Render Environment Variables ---
 MONGODB_URI = os.environ.get("MONGODB_ATLAS_URI")
 API_SECRET_KEY = os.environ.get("API_SECRET_KEY")
+# NEW: Get Google API Key from environment
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") 
 
 if not MONGODB_URI or not API_SECRET_KEY:
     print("FATAL ERROR: MONGODB_ATLAS_URI or API_SECRET_KEY not set in environment.")
+
+if not GOOGLE_API_KEY:
+    print("WARNING: GOOGLE_API_KEY not set. Weather forecast will not work.")
     
 # --- MongoDB Atlas Setup ---
 try:
@@ -50,7 +47,6 @@ app = Flask(__name__)
 
 # --- Global State ---
 model, time_model, scaler, le = None, None, None, None
-last_weather_alert = {"text": "No official weather alerts for Vellore.", "timestamp": None}
 previous_risk_state = "None"
 
 # --- Model Loading ---
@@ -68,27 +64,7 @@ def load_models():
         print(f"FATAL: Model files not found in {MODEL_DIR}. {e}")
 
 # --- (All other helper functions from your script) ---
-def fetch_weather_alerts():
-    global last_weather_alert, WEATHER_API_URL
-    while True:
-        print("Fetching new weather alerts for Vellore (from Open-Meteo)...")
-        try:
-            response = requests.get(WEATHER_API_URL, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            alert_text = "No official weather alerts for Vellore."
-            if 'weather_alerts' in data and 'alerts' in data['weather_alerts'] and len(data['weather_alerts']['alerts']) > 0:
-                alert = data['weather_alerts']['alerts'][0]
-                title = alert.get('title', 'Weather Alert')
-                sender = alert.get('sender', 'Official Source')
-                desc = alert.get('description', 'No details provided.')
-                alert_text = f"**{title.upper()}** (from {sender})\n{desc}"
-            last_weather_alert = {"text": alert_text, "timestamp": datetime.now()}
-            print(f"Weather alert updated: {alert_text.splitlines()[0]}")
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching weather data: {e}")
-            last_weather_alert = {"text": f"Error fetching weather alerts: {e}", "timestamp": datetime.now()}
-        time.sleep(1800)
+# --- REMOVED fetch_weather_alerts() function ---
 
 @app.route('/')
 def dashboard():
@@ -127,10 +103,44 @@ def get_historical_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/weather_alert')
-def get_weather_alert():
-    global last_weather_alert
-    return jsonify(last_weather_alert)
+# ---
+# NEW: Secure Google Weather API Proxy
+# ---
+@app.route('/weather_forecast')
+def get_weather_forecast():
+    # Check if the API key was even loaded from the environment
+    if not GOOGLE_API_KEY:
+        return jsonify({"error": "Server is missing Google API key"}), 500
+    
+    # These are now secure on the server
+    VELLORE_LAT = "12.9165"
+    VELLORE_LON = "79.1325"
+    GOOGLE_WEATHER_URL = f"https://weather.googleapis.com/v1/forecast:lookup?key={GOOGLE_API_KEY}"
+    VELLORE_LOCATION_PAYLOAD = {
+        "location": {
+            "latitude": float(VELLORE_LAT),
+            "longitude": float(VELLORE_LON)
+        },
+        "params": ["hourlyForecast"],
+        "language": "en"
+    }
+
+    try:
+        # Make the secure, server-to-server request to Google
+        response = requests.post(GOOGLE_WEATHER_URL, json=VELLORE_LOCATION_PAYLOAD, timeout=10)
+        
+        # Check for a bad response from Google
+        response.raise_for_status() # This will raise an error for 4xx or 5xx status
+
+        # Success! Pass Google's data directly to our client
+        return jsonify(response.json())
+
+    except requests.exceptions.HTTPError as e:
+        # Handle API errors from Google (like invalid key)
+        return jsonify({"error": f"Google API error: {e.response.text}"}), e.response.status_code
+    except requests.exceptions.RequestException as e:
+        # Handle network errors
+        return jsonify({"error": f"Request to Google Weather failed: {e}"}), 500
 
 @app.route('/pending_events')
 def get_pending_events():
@@ -165,24 +175,14 @@ def normalize_data(sensors_raw):
     sensors_normalized = sensors_raw.copy()
     
     # 1. Normalize Soil
-    # Real sensor: 0-1023 (approx), where 0 is DRY and ~700 is WET.
-    # Training data: 0-100 (percentage), where 0 is DRY and 100 is WET.
     raw_soil = sensors_raw['Soil']
-    
-    # Clamp the value. If it's over 700, just call it "max wet".
     if raw_soil > 700: raw_soil = 700
     if raw_soil < 0: raw_soil = 0
-        
-    # Map the 0-700 scale to a 0-100% scale
     soil_percent = (raw_soil / 700) * 100
     sensors_normalized['Soil'] = soil_percent
 
     # 2. Normalize Rain
-    # Real sensor: 0-1023 (approx), where 0 is DRY and >50 is WET.
-    # Training data: 0 (no rain) or 1 (rain).
     raw_rain = sensors_raw['Rain']
-    
-    # If the analog value is > 50 (a small threshold), it's raining.
     if raw_rain > 50:
         sensors_normalized['Rain'] = 1.0
     else: # Otherwise, it's dry.
@@ -215,7 +215,6 @@ def submit_data():
         return jsonify({"error": "Bad data format"}), 400
 
     # 3. NORMALIZE THE DATA
-    # This is the new step that fixes the bug
     try:
         sensors_normalized = normalize_data(sensors_raw)
     except Exception as e:
@@ -224,7 +223,6 @@ def submit_data():
 
     # 4. Make Prediction (using normalized data)
     try:
-        # We must use the DataFrame here to avoid the UserWarning
         X_features_df = pd.DataFrame([sensors_normalized], columns=FEATURES)
     except KeyError as e:
         print(f"Error: Missing feature {e} from sensor data")
@@ -282,7 +280,7 @@ def submit_data():
 # --- Main Execution ---
 if __name__ == '__main__':
     load_models() 
-    threading.Thread(target=fetch_weather_alerts, daemon=True).start()
+    # REMOVED: threading.Thread(target=fetch_weather_alerts, daemon=True).start()
     print("\n" + "="*50)
     print("   Disaster Prediction Server (v-Cloud) LIVE - LOCAL TEST")
     print(f"  Dashboard running at: http://localhost:5000")
@@ -290,4 +288,4 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 else:
     load_models()
-    threading.Thread(target=fetch_weather_alerts, daemon=True).start()
+    # REMOVED: threading.Thread(target=fetch_weather_alerts, daemon=True).start()
