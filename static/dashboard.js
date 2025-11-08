@@ -6,9 +6,18 @@
 // We must wait for the HTML to be fully loaded before trying to find elements
 document.addEventListener('DOMContentLoaded', () => {
 
+  // --- 1. NEW: Google Weather API Configuration ---
+  // 
+  // ⚠️ IMPORTANT: 
+  // You MUST replace this key with your own Google Cloud API key.
+  // 
+  const GOOGLE_API_KEY = "PASTE_YOUR_GOOGLE_API_KEY_HERE"; 
+  const VELLORE_LAT = 12.9165;
+  const VELLORE_LON = 79.1325;
+
+
   // --- (Chart setup, live data, historical data, and pending events...
-  //     These functions remain UNCHANGED from the v3.0 AI version) ---
-  // ... (pasting them here for completeness) ...
+  //     These functions remain UNCHANGED) ---
   const liveCharts = {};
   let historicalChart = null;
   const sensors = {
@@ -42,21 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
       confidenceEl.textContent = `${(latest.Confidence * 100).toFixed(0)}%`;
       let impactText = "--";
       
-      // Updated logic for ImpactTime (assumes 'null' for pending, number for confirmed)
       if (latest.Risk.toLowerCase() !== "none") {
         if (latest.ImpactTime === 0.0 || latest.ImpactTime === 0) {
-            // This now correctly checks the predicted time
-            impactText = `Est. Impact: ~${latest.ImpactTime}h`;
+          impactText = `Est. Impact: ~${latest.ImpactTime}h`;
         } else {
-            // If it's a non-zero number, it's either predicted or confirmed
-            impactText = `Est. Impact: ${latest.ImpactTime}h`;
+          impactText = `Est. Impact: ${latest.ImpactTime}h`;
         }
       }
 
       impactEl.textContent = impactText;
       riskLabelEl.className = "";
 
-      // Apply styling based on risk
       if (latest.Risk.toLowerCase() === "none") {
         statusBox.style.background = "#e6ffe6"; // Greenish
         riskLabelEl.classList.add("risk-none");
@@ -65,11 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
         riskLabelEl.classList.add("risk-pending");
       }
       
-      // --- THIS IS THE FIX ---
-      // Was: d.Timestamp (uppercase T)
-      // Is:  d.timestamp (lowercase t)
       const labels = data.map(d => d.timestamp); 
-      // --- END FIX ---
 
       for (const [id, info] of Object.entries(sensors)) {
         liveCharts[id].data.labels = labels;
@@ -155,24 +156,80 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { console.error("Error saving impact time:", e); alert("Error saving data."); }
   }
 
-  // --- 4. NEW: Refresh Official Weather Alert ---
-  async function refreshWeatherAlert() {
+  // --- 4. NEW: Refresh Google Weather Forecast ---
+  async function fetchGoogleForecast() {
+    const forecastBox = document.getElementById("forecast-box");
+    // Don't run if the API key hasn't been set
+    if (GOOGLE_API_KEY === "PASTE_YOUR_GOOGLE_API_KEY_HERE") {
+        forecastBox.innerHTML = `
+            <h3>Forecast Unavailable</h3>
+            <p style="color: #dc3545;">
+                Please set your Google API key in <strong>dashboard.js</strong>.
+            </p>`;
+        return;
+    }
+    
+    const apiUrl = `https://weather.googleapis.com/v1/forecast:lookup?key=${GOOGLE_API_KEY}`;
+    const requestBody = {
+        "location": { "latitude": VELLORE_LAT, "longitude": VELLORE_LON },
+        "params": ["hourlyForecast"],
+        "language": "en"
+    };
+
     try {
-      const res = await fetch('/weather_alert');
-      const alert = await res.json();
-      
-      // Format with line breaks and simple bolding
-      document.getElementById('weather-alert-text').innerHTML = alert.text
-        .replace(/\n/g, '<br>')
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      
-      const timestamp = alert.timestamp ? new Date(alert.timestamp).toLocaleString() : '--';
-      document.getElementById('weather-alert-timestamp').textContent = `Last checked: ${timestamp}`;
-    } catch (e) {
-      console.error("Error refreshing weather alert:", e);
-      document.getElementById('weather-alert-text').textContent = "Error loading weather alerts.";
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`API Error: ${response.status} - ${errorData.error.message}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.hourlyForecasts) {
+            throw new Error("No hourly data received");
+        }
+
+        // Build the forecast list HTML
+        let html = '<h3>Hourly Forecast</h3><ul class="forecast-list">';
+        
+        // Show next 5 hours
+        data.hourlyForecasts.slice(0, 5).forEach(hour => {
+            // Format time (e.g., "2:00 PM")
+            const timeStr = new Date(hour.dateTime).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+            // Round temperature
+            const temp = Math.round(hour.temperature.value);
+            // Get rain probability (converts 0.x to percentage)
+            const rainChance = Math.round((hour.precipitation.probability || 0) * 100);
+
+            html += `
+                <li>
+                    <span class="time">${timeStr}</span>
+                    <span class="details">
+                        <span class="temp">${temp}°C</span> | 
+                        💧 ${rainChance}% Rain
+                    </span>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        forecastBox.innerHTML = html;
+
+    } catch (error) {
+        console.error("Google Weather API failed:", error);
+        forecastBox.innerHTML = `
+            <h3>Forecast Unavailable</h3>
+            <p style="color: #dc3545; font-size: 0.9rem;">
+                Failed to load. Check API key.<br>
+                <small>${error.message}</small>
+            </p>`;
     }
   }
+
 
   /*
    * IMPORTANT:
@@ -183,14 +240,15 @@ document.addEventListener('DOMContentLoaded', () => {
   window.saveImpactTime = saveImpactTime;
 
 
-  // --- 5. Initial Load and Refresh Timers ---
+  // --- 5. Initial Load and Refresh Timers (UPDATED) ---
   refreshLiveData();
-  refreshWeatherAlert(); 
+  fetchGoogleForecast(); // <-- CHANGED from refreshWeatherAlert
   loadHistoricalData('24h', document.querySelector('.hist-btn'));
   loadPendingEvents();
   
   setInterval(refreshLiveData, 5000); // Live charts every 5 sec
-  setInterval(refreshWeatherAlert, 60000); // Weather alert every 60 sec
+  // Forecasts don't change every minute. 10 minutes is safer for your API quota.
+  setInterval(fetchGoogleForecast, 600000); // <-- CHANGED (10 minutes)
   setInterval(loadPendingEvents, 60000); // Pending events every 60 sec
 
 }); // End of DOMContentLoaded

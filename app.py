@@ -159,32 +159,33 @@ def update_impact_time():
 
 
 # ---
-# THIS IS THE FIX. This function remaps your real sensor data
-# to match the scale of your training data.
+# THIS IS THE NEW, CORRECTED NORMALIZATION FUNCTION
 # ---
 def normalize_data(sensors_raw):
     sensors_normalized = sensors_raw.copy()
     
     # 1. Normalize Soil
-    # Real sensor: 0-1023 (approx), where 1023 is dry and ~300 is wet.
-    # Training data: 0-100 (percentage), where 0 is dry and 100 is wet.
-    # We will map the analog value to a percentage, inverting it.
+    # Real sensor: 0-1023 (approx), where 0 is DRY and ~700 is WET.
+    # Training data: 0-100 (percentage), where 0 is DRY and 100 is WET.
     raw_soil = sensors_raw['Soil']
-    # Clamp value to a reasonable range (e.g., 300=wet, 1023=dry)
-    if raw_soil < 300: raw_soil = 300
-    if raw_soil > 1023: raw_soil = 1023
-    # Map 1023 (dry) to 0% and 300 (wet) to 100%
-    soil_percent = (1023 - raw_soil) / (1023 - 300) * 100
+    
+    # Clamp the value. If it's over 700, just call it "max wet".
+    if raw_soil > 700: raw_soil = 700
+    if raw_soil < 0: raw_soil = 0
+        
+    # Map the 0-700 scale to a 0-100% scale
+    soil_percent = (raw_soil / 700) * 100
     sensors_normalized['Soil'] = soil_percent
 
     # 2. Normalize Rain
-    # Real sensor: 0-1023 (approx), where 1023 is dry and <500 is wet.
+    # Real sensor: 0-1023 (approx), where 0 is DRY and >50 is WET.
     # Training data: 0 (no rain) or 1 (rain).
-    # We will convert the analog value to a digital 0 or 1.
     raw_rain = sensors_raw['Rain']
-    if raw_rain < 800: # If analog value is low, it's raining
+    
+    # If the analog value is > 50 (a small threshold), it's raining.
+    if raw_rain > 50:
         sensors_normalized['Rain'] = 1.0
-    else: # If analog value is high, it's dry
+    else: # Otherwise, it's dry.
         sensors_normalized['Rain'] = 0.0
         
     print(f"Data Normalized: Soil {sensors_raw['Soil']}->{soil_percent:.1f}%, Rain {sensors_raw['Rain']}->{sensors_normalized['Rain']}")

@@ -80,3 +80,61 @@ h1 {
         width: 95%;
     }
 }
+
+/* --- NEW: Weather Forecast Widget Styles --- */
+
+.weather-widget {
+  background-color: #f8f9fa; /* Light gray background */
+  padding: 15px 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eee;
+  box-sizing: border-box; 
+  font-size: 0.95rem;
+}
+
+.weather-widget h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #2c3e50;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.weather-widget p {
+  text-align: center;
+  margin: 10px 0;
+  color: #555;
+}
+
+.forecast-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.forecast-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.forecast-list li:last-child {
+  border-bottom: none;
+}
+
+.forecast-list .time {
+  font-weight: 600;
+  color: #3498db; /* Blue for time */
+}
+
+.forecast-list .details {
+  text-align: right;
+}
+
+.forecast-list .temp {
+  font-weight: 700;
+  color: #333;
+}
