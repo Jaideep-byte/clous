@@ -223,7 +223,7 @@ def submit_data():
 
     # 4. Make Prediction (using normalized data)
     try:
-        X_features_list = [sensors_normalized[feature] for feature in FEATURES]
+        # We must use the DataFrame here to avoid the UserWarning
         X_features_df = pd.DataFrame([sensors_normalized], columns=FEATURES)
     except KeyError as e:
         print(f"Error: Missing feature {e} from sensor data")
