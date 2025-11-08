@@ -301,3 +301,66 @@ if __name__ == "__main__":
     print("🚀 Dashboard: http://localhost:5000")
     print("="*55 + "\n")
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+
+# =====================================================
+#             API ENDPOINT FOR EXTERNAL CLIENT
+# =====================================================
+@app.route("/submit_data", methods=["POST"])
+def submit_data():
+    try:
+        api_key = request.headers.get("X-API-KEY")
+        expected_key = os.environ.get("API_SECRET_KEY", "default_key")
+
+        # --- API Key Check ---
+        if api_key != expected_key:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        # --- Parse incoming JSON ---
+        data = request.get_json(force=True)
+        required_fields = ["T","H","Soil","Rain","Flame","Vib","P","Alt"]
+        for f in required_fields:
+            if f not in data:
+                return jsonify({"error": f"Missing field: {f}"}), 400
+
+        sensors = {k: float(data[k]) for k in required_fields}
+
+        # --- Predict Risk (same logic as serial) ---
+        risk_label, confidence, predicted_impact_time = "None", 1.0, 0.0
+        if model and scaler and le:
+            with model_lock:
+                X = np.array([sensors[f] for f in FEATURES]).reshape(1, -1)
+                X_scaled = scaler.transform(X)
+                probs = model.predict_proba(X_scaled)[0]
+                idx = np.argmax(probs)
+                confidence = float(probs[idx])
+                risk_label = le.inverse_transform([idx])[0]
+                if confidence < 0.6:
+                    risk_label = "None"
+                if risk_label.lower() != "none":
+                    predicted_impact_time = float(max(0, round(time_model.predict(X_scaled)[0], 2)))
+
+        # --- Store in MongoDB ---
+        ts = datetime.now()
+        mongo_doc = sensors.copy()
+        mongo_doc.update({
+            "timestamp": ts,
+            "Risk": risk_label,
+            "Confidence": confidence,
+            "ImpactTime": predicted_impact_time,
+        })
+        collection.insert_one(mongo_doc)
+
+        # --- Optional alert ---
+        if risk_label.lower() != "none":
+            msg = f"🚨 {risk_label.upper()} Risk ({confidence*100:.0f}%)\nPredicted Impact ≈ {predicted_impact_time}h"
+            threading.Thread(target=send_alert, args=(msg,), daemon=True).start()
+
+        return jsonify({
+            "status": "success",
+            "Risk": risk_label,
+            "Confidence": confidence,
+            "ImpactTime": predicted_impact_time
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
