@@ -14,11 +14,9 @@ LAST_TRAIN_COUNT_FILE = os.path.join(ML_DIR, "last_training_count.txt")
 MODEL_DIR = os.path.join(ML_DIR, "ml_models")
 SERIAL_PORT = "COM7"
 BAUD_RATE = 9600
-
-# --- FIX: Ensure this order matches exactly the training script ---
 FEATURES = ["T", "H", "Soil", "Rain", "Flame", "Vib", "P", "Alt"]
 
-# --- Weather API Config (Open-Meteo - Free) ---
+# --- Weather API ---
 VELLORE_LAT, VELLORE_LON = "12.9165", "79.1325"
 WEATHER_API_URL = (
     f"https://api.open-meteo.com/v1/forecast?latitude={VELLORE_LAT}&longitude={VELLORE_LON}"
@@ -32,7 +30,7 @@ retraining_lock = threading.Lock()
 # --- MongoDB Setup ---
 MONGODB_URI = os.environ.get(
     "MONGODB_URI",
-    "mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.5.9"
+    "mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000"
 )
 try:
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
@@ -52,7 +50,7 @@ if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, "w", newline="") as f:
         csv.writer(f).writerow(CSV_HEADER)
 
-# --- Global State ---
+# --- Globals ---
 model = time_model = scaler = le = None
 previous_risk_state = "None"
 last_weather_alert = {"text": "No official weather alerts for Vellore.", "timestamp": None}
@@ -182,7 +180,6 @@ def read_serial():
                 confidence = float(probs[idx])
                 risk_label = le.inverse_transform([idx])[0]
 
-                # Optional confidence threshold (to suppress false Fire/Flood)
                 if confidence < 0.6:
                     risk_label = "None"
 
@@ -192,13 +189,11 @@ def read_serial():
         ts = datetime.now()
         ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Save to CSV
         with open(CSV_FILE, "a", newline="") as f:
             csv.writer(f).writerow(
                 [ts_str] + list(sensors.values()) + [risk_label, f"{confidence:.2f}", predicted_impact_time]
             )
 
-        # Save to MongoDB
         mongo_doc = sensors.copy()
         mongo_doc.update({
             "timestamp": ts,
@@ -209,7 +204,6 @@ def read_serial():
         collection.insert_one(mongo_doc)
         current_row_count += 1
 
-        # Alert on change
         if risk_label != previous_risk_state and risk_label.lower() != "none":
             msg = (
                 f"🚨 {risk_label.upper()} Risk ({confidence*100:.0f}%)\n"
@@ -228,38 +222,27 @@ def read_serial():
 # =====================================================
 #                 FLASK ROUTES
 # =====================================================
-@app.route("/submit_data", methods=["POST"])
-def submit_data():
-    try:
-        # --- API key security check ---
-        api_key = request.headers.get("X-API-KEY")
-        if api_key != os.environ.get("API_SECRET_KEY", "default_key"):
-            return jsonify({"error": "Unauthorized"}), 401
 
-        # --- Parse JSON ---
-        data = request.get_json(force=True)
-        if not data:
-            return jsonify({"error": "Invalid JSON"}), 400
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    """Root route – now handles both dashboard (GET) and direct cloud POSTs."""
+    if request.method == 'POST':
+        try:
+            data = request.get_json(force=True)
+            if not data:
+                return jsonify({"error": "Invalid JSON"}), 400
 
-        # --- Add timestamp ---
-        data["timestamp"] = datetime.utcnow()
+            data["timestamp"] = datetime.utcnow()
+            for key in FEATURES:
+                data[key] = float(data.get(key, 0))
 
-        # --- Basic validation ---
-        for key in ["T", "H", "Soil", "Rain", "Flame", "Vib", "P", "Alt"]:
-            data[key] = float(data.get(key, 0))
+            collection.insert_one(data)
+            print(f"✅ Cloud data received & inserted: {data}")
+            return jsonify({"status": "ok", "message": "Data stored successfully"})
+        except Exception as e:
+            print(f"❌ Error at root POST: {e}")
+            return jsonify({"error": str(e)}), 500
 
-        # --- Store in MongoDB ---
-        collection.insert_one(data)
-
-        print(f"✅ New data inserted: {data}")
-        return jsonify({"status": "ok", "message": "Data stored successfully"})
-
-    except Exception as e:
-        print(f"Error in /submit_data: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/")
-def dashboard():
     return render_template("dashboard.html")
 
 @app.route("/data")
@@ -273,51 +256,10 @@ def get_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/historical_data")
-def get_historical_data():
-    try:
-        hours = 24 * 7 if request.args.get("period") == "7d" else 24
-        start_time = datetime.now() - timedelta(hours=hours)
-        pipeline = [
-            {"$match": {"timestamp": {"$gte": start_time}}},
-            {"$group": {
-                "_id": {"$dateTrunc": {"date": "$timestamp", "unit": "hour"}},
-                "avg_T": {"$avg": "$T"},
-                "avg_H": {"$avg": "$H"},
-                "avg_Soil": {"$avg": "$Soil"},
-                "total_Rain": {"$sum": "$Rain"},
-            }},
-            {"$sort": {"_id": 1}},
-        ]
-        results = list(collection.aggregate(pipeline))
-        formatted = {
-            "labels": [r["_id"].strftime("%Y-%m-%dT%H:%M:%S") for r in results],
-            "avg_T": [r["avg_T"] for r in results],
-            "avg_H": [r["avg_H"] for r in results],
-            "avg_Soil": [r["avg_Soil"] for r in results],
-            "total_Rain": [r["total_Rain"] for r in results],
-        }
-        return jsonify(formatted)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route("/weather_alert")
 def get_weather_alert():
     return jsonify(last_weather_alert)
 
-@app.route("/update_impact_time", methods=["POST"])
-def update_impact_time():
-    try:
-        data = request.json
-        doc_id = data.get("doc_id")
-        impact = float(data.get("ground_truth_time"))
-        if not doc_id or impact < 0:
-            return jsonify({"error": "Invalid data"}), 400
-        collection.update_one({"_id": ObjectId(doc_id)}, {"$set": {"ImpactTime": impact}})
-        print(f"✅ Ground truth updated for {doc_id}: {impact}h")
-        return jsonify({"status": "success", "id": doc_id})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # =====================================================
 #                 MAIN ENTRY
@@ -327,8 +269,7 @@ if __name__ == "__main__":
     threading.Thread(target=read_serial, daemon=True).start()
     threading.Thread(target=fetch_weather_alerts, daemon=True).start()
     print("\n" + "="*55)
-    print("🌍 Disaster Prediction Server (v3.3 - Stable Local)")
+    print("🌍 Disaster Prediction Server (v3.4 - Cloud Compatible)")
     print("🚀 Dashboard: http://localhost:5000")
     print("="*55 + "\n")
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
-
