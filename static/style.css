@@ -1,140 +1,136 @@
-/* --- IMPROVEMENT: Import Font --- */
+/* --- Imports and Body --- */
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
 body {
-    font-family: 'Poppins', sans-serif;
-    text-align: center;
-    background: #f7f9fa;
-    margin: 0;
-    padding: 10px;
-    /* --- IMPROVEMENT: Smooth color change --- */
-    transition: background-color 0.5s ease;
-}
-
-h1 {
-    margin-top: 15px;
-    color: #333;
-}
-
-.status-box {
-    background: #fff;
-    padding: 10px 20px;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 500px;
-    margin: 15px auto;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    border: 1px solid #eee;
-}
-
-/* --- IMPROVEMENT: Better spacing in status --- */
-.status-box h2 {
-    margin: 5px 0;
-    color: #000;
-}
-.status-box p {
-    margin: 5px 0;
-    color: #555;
-    font-size: 1.1em;
-}
-
-.grid {
-    display: grid;
-    /* --- IMPROVEMENT: Added more charts, fit content --- */
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-    width: 95%;
-    max-width: 1400px;
-    margin: 20px auto;
-}
-
-/* * This container is new in the HTML. 
- * It helps Chart.js be responsive.
-*/
-.chart-container {
-    position: relative;
-    height: 350px; /* Give charts a fixed height */
-    width: 100%;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    padding: 15px;
-    box-sizing: border-box; /* Include padding in width/height */
-}
-
-/* --- IMPROVEMENT: Responsive layout for mobile --- */
-@media (max-width: 768px) {
-    body {
-        padding: 5px;
-    }
-    .grid {
-        /* Stacks to 1 column */
-        grid-template-columns: 1fr;
-        width: 100%;
-        gap: 15px;
-    }
-    h1 {
-        font-size: 1.5em;
-    }
-    .status-box {
-        width: 95%;
-    }
-}
-
-/* --- NEW: Weather Forecast Widget Styles --- */
-
-.weather-widget {
-  background-color: #f8f9fa; /* Light gray background */
-  padding: 15px 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  border: 1px solid #eee;
-  box-sizing: border-box; 
-  font-size: 0.95rem;
-}
-
-.weather-widget h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-  color: #2c3e50;
-  font-size: 1.2rem;
+  font-family: 'Poppins', sans-serif;
   text-align: center;
-}
-
-.weather-widget p {
-  text-align: center;
-  margin: 10px 0;
-  color: #555;
-}
-
-.forecast-list {
-  list-style: none;
-  padding: 0;
+  background-color: #f7f9fa;
   margin: 0;
+  padding: 15px;
+}
+h1 { margin-top: 0; color: #333; }
+h2 { color: #444; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+.location-context { margin-top: -15px; font-size: 0.9rem; color: #555; }
+
+/* --- Live Dot --- */
+.live-dot {
+  display: inline-block; width: 12px; height: 12px;
+  background-color: #28a745; border-radius: 50%;
+  animation: pulse 1.5s infinite; margin-right: 10px;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
 }
 
-.forecast-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #e9ecef;
+/* --- Main Grid (Status + Alert) --- */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 20px auto;
 }
 
-.forecast-list li:last-child {
-  border-bottom: none;
+/* --- Status Box (Sensor Status) --- */
+.status-box {
+  background: #fff; padding: 20px; border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eee; transition: background-color 0.5s ease;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.status-box h2 { margin-top: 0; }
+#risk-display { display: flex; align-items: baseline; justify-content: center; gap: 15px; }
+#risk-label { font-size: 2.5rem; font-weight: 600; padding: 0; margin: 0; }
+#confidence-label { font-size: 1.5rem; font-weight: 300; padding: 0; margin: 0; opacity: 0.8; }
+.status-box p { margin: 5px 0 0; font-size: 1.1rem; color: #555; }
+
+/* --- Risk Colors --- */
+.risk-none { color: #28a745; }
+.risk-pending { color: #fd7e14; }
+.risk-high { color: #dc3545; }
+
+/* --- NEW: Official Weather Alert Box --- */
+.weather-alert-box {
+  background: #fff; padding: 20px; border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eee; text-align: left;
+  display: flex; flex-direction: column;
+  background-color: #fffaf0; /* Light cream for alerts */
+  border-left: 5px solid #fd7e14; /* Orange border */
+}
+.weather-alert-box h2 { margin-top: 0; }
+#weather-alert-text {
+  font-size: 0.95rem; color: #333;
+  line-height: 1.6; margin: 0;
+  flex-grow: 1;
+}
+#weather-alert-timestamp {
+  font-size: 0.75rem; color: #999;
+  text-align: right; margin-top: 10px;
 }
 
-.forecast-list .time {
-  font-weight: 600;
-  color: #3498db; /* Blue for time */
+/* --- Live Chart Grid --- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  max-width: 1000px;
+  margin: 30px auto;
+}
+.chart-container {
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 15px; height: 350px;
 }
 
-.forecast-list .details {
-  text-align: right;
+/* --- Historical Chart --- */
+.historical-container {
+  max-width: 1200px; margin: 40px auto; background: #fff;
+  border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 20px;
+}
+.hist-buttons { margin-bottom: 15px; }
+.hist-btn {
+  background: #f0f0f0; border: 1px solid #ddd;
+  padding: 8px 15px; border-radius: 6px;
+  cursor: pointer; font-family: 'Poppins', sans-serif;
+  font-weight: 600; margin: 0 5px;
+}
+.hist-btn.active { background: #007bff; color: white; border-color: #007bff; }
+.chart-container-large {
+  height: 400px;
 }
 
-.forecast-list .temp {
-  font-weight: 700;
-  color: #333;
+/* --- Pending Events Table --- */
+.pending-container {
+  max-width: 1200px; margin: 40px auto; background: #fff;
+  border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 20px; text-align: left; overflow-x: auto;
+}
+.pending-container p { font-size: 0.9rem; color: #666; }
+#pending-table { width: 100%; border-collapse: collapse; margin-top: 15px; min-width: 900px; }
+#pending-table th, #pending-table td {
+  border: 1px solid #ddd; padding: 10px;
+  text-align: center; font-size: 0.85rem;
+}
+#pending-table th { background-color: #f9f9f9; font-weight: 600; }
+.impact-input { width: 80px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; text-align: center; }
+.save-btn {
+  background-color: #28a745; color: white; border: none;
+  padding: 8px 12px; border-radius: 6px; cursor: pointer;
+  font-weight: 600; transition: background-color 0.2s;
+}
+.save-btn:hover { background-color: #218838; }
+
+/* --- Responsive (Mobile) --- */
+@media (max-width: 768px) {
+  body { padding: 10px; }
+  .main-grid { grid-template-columns: 1fr; } /* Stack status and AI */
+  .grid { grid-template-columns: 1fr; } /* Stack live charts */
+  .chart-container { height: 300px; }
+  h1 { font-size: 1.5rem; }
+  #risk-label { font-size: 2rem; }
+  #confidence-label { font-size: 1.2rem; }
 }
