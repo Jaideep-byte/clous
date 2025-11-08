@@ -106,6 +106,9 @@ def get_historical_data():
 # ---
 # NEW: Secure Google Weather API Proxy
 # ---
+# ---
+# UPDATED: Secure Google Weather API Proxy
+# ---
 @app.route('/weather_forecast')
 def get_weather_forecast():
     # Check if the API key was even loaded from the environment
@@ -115,25 +118,40 @@ def get_weather_forecast():
     # These are now secure on the server
     VELLORE_LAT = "12.9165"
     VELLORE_LON = "79.1325"
-    GOOGLE_WEATHER_URL = f"https://weather.googleapis.com/v1/forecast:lookup?key={GOOGLE_API_KEY}"
-    VELLORE_LOCATION_PAYLOAD = {
-        "location": {
-            "latitude": float(VELLORE_LAT),
-            "longitude": float(VELLORE_LON)
-        },
-        "params": ["hourlyForecast"],
-        "language": "en"
+    
+    # --- FIX ---
+    # The old URL /v1/forecast:lookup was incorrect, causing the 404 error.
+    # The correct URL for hourly forecasts is /v1/forecast/hours:lookup
+    # This endpoint also uses a GET request, so we build the params.
+    
+    GOOGLE_WEATHER_URL = "https://weather.googleapis.com/v1/forecast/hours:lookup"
+    
+    params = {
+        "key": GOOGLE_API_KEY,
+        "location.latitude": VELLORE_LAT,
+        "location.longitude": VELLORE_LON,
+        "hours": 24  # Request 24 hours of data
     }
+    # --- END FIX ---
 
     try:
-        # Make the secure, server-to-server request to Google
-        response = requests.post(GOOGLE_WEATHER_URL, json=VELLORE_LOCATION_PAYLOAD, timeout=10)
+        # Make the secure, server-to-server GET request to Google
+        response = requests.get(GOOGLE_WEATHER_URL, params=params, timeout=10)
         
         # Check for a bad response from Google
         response.raise_for_status() # This will raise an error for 4xx or 5xx status
 
-        # Success! Pass Google's data directly to our client
-        return jsonify(response.json())
+        data = response.json()
+        
+        # --- TRANSLATION ---
+        # Your dashboard.js code expects a field named 'hourlyForecasts'.
+        # This correct API endpoint returns a field named 'forecastHours'.
+        # We rename it here so you don't have to change your JavaScript.
+        if 'forecastHours' in data:
+            data['hourlyForecasts'] = data.pop('forecastHours')
+        # --- END TRANSLATION ---
+            
+        return jsonify(data)
 
     except requests.exceptions.HTTPError as e:
         # Handle API errors from Google (like invalid key)
