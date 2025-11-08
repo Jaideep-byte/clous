@@ -28,10 +28,7 @@ model_lock = threading.Lock()
 retraining_lock = threading.Lock()
 
 # --- MongoDB Setup ---
-MONGODB_URI = os.environ.get(
-    "MONGODB_URI",
-    "mongodb://127.0.0.1:27017/?directConnection=true&serverSelectionTimeoutMS=2000"
-)
+MONGODB_URI = os.environ.get("MONGODB_ATLAS_URI",)
 try:
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
     db = client["DisasterDB"]
