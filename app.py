@@ -64,7 +64,6 @@ def load_models():
         print(f"FATAL: Model files not found in {MODEL_DIR}. {e}")
 
 # --- (All other helper functions from your script) ---
-# --- REMOVED fetch_weather_alerts() function ---
 
 @app.route('/')
 def dashboard():
@@ -106,9 +105,6 @@ def get_historical_data():
 # ---
 # NEW: Secure Google Weather API Proxy
 # ---
-# ---
-# UPDATED: Secure Google Weather API Proxy
-# ---
 @app.route('/weather_forecast')
 def get_weather_forecast():
     # Check if the API key was even loaded from the environment
@@ -118,40 +114,25 @@ def get_weather_forecast():
     # These are now secure on the server
     VELLORE_LAT = "12.9165"
     VELLORE_LON = "79.1325"
-    
-    # --- FIX ---
-    # The old URL /v1/forecast:lookup was incorrect, causing the 404 error.
-    # The correct URL for hourly forecasts is /v1/forecast/hours:lookup
-    # This endpoint also uses a GET request, so we build the params.
-    
-    GOOGLE_WEATHER_URL = "https://weather.googleapis.com/v1/forecast/hours:lookup"
-    
-    params = {
-        "key": GOOGLE_API_KEY,
-        "location.latitude": VELLORE_LAT,
-        "location.longitude": VELLORE_LON,
-        "hours": 24  # Request 24 hours of data
+    GOOGLE_WEATHER_URL = f"https://weather.googleapis.com/v1/forecast:lookup?key={GOOGLE_API_KEY}"
+    VELLORE_LOCATION_PAYLOAD = {
+        "location": {
+            "latitude": float(VELLORE_LAT),
+            "longitude": float(VELLORE_LON)
+        },
+        "params": ["hourlyForecast"],
+        "language": "en"
     }
-    # --- END FIX ---
 
     try:
-        # Make the secure, server-to-server GET request to Google
-        response = requests.get(GOOGLE_WEATHER_URL, params=params, timeout=10)
+        # Make the secure, server-to-server request to Google
+        response = requests.post(GOOGLE_WEATHER_URL, json=VELLORE_LOCATION_PAYLOAD, timeout=10)
         
         # Check for a bad response from Google
         response.raise_for_status() # This will raise an error for 4xx or 5xx status
 
-        data = response.json()
-        
-        # --- TRANSLATION ---
-        # Your dashboard.js code expects a field named 'hourlyForecasts'.
-        # This correct API endpoint returns a field named 'forecastHours'.
-        # We rename it here so you don't have to change your JavaScript.
-        if 'forecastHours' in data:
-            data['hourlyForecasts'] = data.pop('forecastHours')
-        # --- END TRANSLATION ---
-            
-        return jsonify(data)
+        # Success! Pass Google's data directly to our client
+        return jsonify(response.json())
 
     except requests.exceptions.HTTPError as e:
         # Handle API errors from Google (like invalid key)
@@ -187,23 +168,36 @@ def update_impact_time():
 
 
 # ---
-# THIS IS THE NEW, CORRECTED NORMALIZATION FUNCTION
+# THIS IS THE NEW, CORRECTED NORMALIZATION FUNCTION (v4)
 # ---
 def normalize_data(sensors_raw):
     sensors_normalized = sensors_raw.copy()
     
     # 1. Normalize Soil
+    # Real sensor: 0-1023 (approx), where HIGH is DRY and LOW is WET.
+    # Your log `Soil:1` means VERY WET.
+    # Training data: 0-100 (percentage), where 0 is DRY and 100 is WET.
     raw_soil = sensors_raw['Soil']
-    if raw_soil > 700: raw_soil = 700
+    
+    # Clamp the value (0-1023)
     if raw_soil < 0: raw_soil = 0
-    soil_percent = (raw_soil / 700) * 100
+    if raw_soil > 1023: raw_soil = 1023
+        
+    # Invert the scale: 1023 (dry) -> 0% wet. 0 (wet) -> 100% wet.
+    soil_percent = ((1023 - raw_soil) / 1023) * 100
     sensors_normalized['Soil'] = soil_percent
 
     # 2. Normalize Rain
+    # Real sensor: 0-1023 (approx), where HIGH is DRY and LOW is WET.
+    # Your log `Rain:0` means VERY WET (raining).
+    # Training data: 0 (no rain) or 1 (rain).
     raw_rain = sensors_raw['Rain']
-    if raw_rain > 50:
+    
+    # If the analog value is LOW (e.g., < 800), it's raining.
+    # Your value of 0 is < 800, so this is correct.
+    if raw_rain < 800:
         sensors_normalized['Rain'] = 1.0
-    else: # Otherwise, it's dry.
+    else: # Otherwise, it's dry (high value).
         sensors_normalized['Rain'] = 0.0
         
     print(f"Data Normalized: Soil {sensors_raw['Soil']}->{soil_percent:.1f}%, Rain {sensors_raw['Rain']}->{sensors_normalized['Rain']}")
